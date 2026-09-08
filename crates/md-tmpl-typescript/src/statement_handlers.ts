@@ -312,6 +312,11 @@ function handleMatch(
         "match: empty variant name in inline match case",
       );
     }
+    if (variants.includes("_")) {
+      throw new TemplateSyntaxError(
+        "match: wildcard '_' in {% case %} is not supported — use {% else %} for fallback",
+      );
+    }
 
     // Parse body, stopping at /match or else.
     const [body, endPos, closingTag] = parseBlockWithClosing(
@@ -435,6 +440,11 @@ function handleMatch(
       if (variants.length === 0) {
         throw new TemplateSyntaxError(
           "match: empty variant name in {% case %}",
+        );
+      }
+      if (variants.includes("_")) {
+        throw new TemplateSyntaxError(
+          "match: wildcard '_' in {% case %} is not supported — use {% else %} for fallback",
         );
       }
       arms.push({ variants, body: [], guard: caseGuard });

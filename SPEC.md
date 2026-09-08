@@ -4,6 +4,31 @@ Complete reference for `.tmpl.md` template syntax and the frontmatter type
 system. See the [README](README.md) for API documentation, motivation,
 and quick-start examples.
 
+## Table of Contents
+
+- [File Format](#file-format)
+- [Frontmatter & Type System](#frontmatter--type-system)
+- [Markdown Blockquotes, Statement Tags, and Comments](#markdown-blockquotes-statement-tags-and-comments)
+- [Type Aliases](#type-aliases)
+- [Cross-Template Imports](#cross-template-imports)
+- [Constants](#constants)
+- [Compile-Time Environment Variables](#compile-time-environment-variables)
+- [Enum Literal Expressions](#enum-literal-expressions)
+- [Naming Conventions & Collision Rules](#naming-conventions--collision-rules)
+- [Expression Syntax](#expression-syntax)
+- [Filters](#filters)
+- [Built-in Functions](#built-in-functions)
+- [String Interpolation](#string-interpolation)
+- [Control Flow](#control-flow)
+- [Option Types](#option-types)
+- [Panic Statements](#panic-statements)
+- [Includes](#includes)
+- [Inline Templates](#inline-templates)
+- [Raw Blocks](#raw-blocks)
+- [Comments](#comments)
+- [Whitespace Control](#whitespace-control)
+- [Error Diagnostics](#error-diagnostics)
+
 ---
 
 ## File Format
@@ -1213,6 +1238,16 @@ Variable substitution: `{{ expr }}`
 
 Dotted paths resolve nested struct and enum fields. Accessing a field that does
 not exist on the resolved type is a compile-time error.
+
+### Optional Namespace Prefixes
+
+Variables in template expressions may optionally carry an explicit namespace prefix corresponding to their declaration source:
+
+- `consts.NAME` — resolves a constant declared in `consts:`
+- `params.name` — resolves a parameter declared in `params:`
+- `opts.NAME` / `options.NAME` — resolves a compile-time environment variable declared in `env:`
+
+These prefixes are optional syntactic sugar for readability and are stripped during identifier resolution (e.g. `{{ consts.MAX_RETRIES }}` is equivalent to `{{ MAX_RETRIES }}`).
 
 ### Renderable Types
 

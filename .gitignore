@@ -21,6 +21,7 @@ SKILL.md
 node_modules
 benchmarks/target
 
-# Rlease stuff
+# Release & build artifacts
 *.tgz
 .npmrc
+go/cmd/pt-gen-go/pt-gen-go

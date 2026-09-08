@@ -15,27 +15,10 @@ class Priority(Variants):
     Medium = ()
     Low = ()
 
-class Urgency(Variants):
-    Critical = ()
-    High = ()
-    Medium = ()
-    Low = ()
-
 @dataclass
 class TaskReportTasksItem:
     name: str
-    urgency: Urgency
-
-class Urgency(Variants):
-    Critical = ()
-    High = ()
-    Medium = ()
-    Low = ()
-
-@dataclass
-class TasksTasksItem:
-    name: str
-    urgency: Urgency
+    urgency: Priority
 
 @dataclass
 class TaskReport:
@@ -52,4 +35,4 @@ class TaskReport:
         import dataclasses
         return template.render_dict(dataclasses.asdict(self))
 
-__all__ = ["TaskReport", "Priority", "Urgency", "TaskReportTasksItem", "Urgency", "TasksTasksItem"]
+__all__ = ["TaskReport", "Priority", "TaskReportTasksItem"]

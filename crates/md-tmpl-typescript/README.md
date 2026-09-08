@@ -406,14 +406,14 @@ Node.js 22, single-template timings (lower is better):
 
 | Scenario                 |    render | renderUnchecked |
 | ------------------------ | --------: | --------------: |
-| simple (1 str)           |    623 ns |      **510 ns** |
-| multi-param (4 types)    |  1,901 ns |    **1,090 ns** |
-| list (2 items)           |  3,810 ns |    **2,136 ns** |
-| list (20 items)          | 27,245 ns |             N/A |
-| enum unit variant        | 18,371 ns |             N/A |
-| enum struct variant      |  1,714 ns |             N/A |
-| filters (idx+add, upper) |  6,552 ns |             N/A |
-| if/elif/else             |  1,919 ns |    **1,557 ns** |
+| simple (1 str)           |    625 ns |      **570 ns** |
+| multi-param (4 types)    |  1,764 ns |    **1,388 ns** |
+| list (2 items)           |  4,085 ns |    **1,896 ns** |
+| list (20 items)          | 28,817 ns |             N/A |
+| enum unit variant        | 16,499 ns |             N/A |
+| enum struct variant      |  1,856 ns |             N/A |
+| filters (idx+add, upper) |  7,033 ns |             N/A |
+| if/elif/else             |  2,563 ns |    **2,128 ns** |
 
 `renderUnchecked()` skips runtime type validation — use it when TypeScript's
 static checks are sufficient.
@@ -427,11 +427,11 @@ Node.js 22, 50,000 iterations, best of 5 runs
 
 <!-- BENCHMARK:TS_COMPARISON_RENDER -->
 
-| Scenario           | render() | renderUnchecked() | Handlebars |        Mustache |
-| ------------------ | -------: | ----------------: | ---------: | --------------: |
-| **simple**         | 1,040 ns |            814 ns |   1,258 ns |   **745 ns** 🏆 |
-| **loop (5 items)** | 5,233 ns |          2,850 ns |   1,897 ns | **1,863 ns** 🏆 |
-| **conditional**    | 2,442 ns |          2,110 ns |   1,549 ns |   **450 ns** 🏆 |
+| Scenario           | render() | renderUnchecked() |      Handlebars |        Mustache |
+| ------------------ | -------: | ----------------: | --------------: | --------------: |
+| **simple**         | 1,092 ns |     **853 ns** 🏆 |        2,086 ns |        1,540 ns |
+| **loop (5 items)** | 8,117 ns |          2,713 ns | **2,170 ns** 🏆 |        2,362 ns |
+| **conditional**    | 2,976 ns |          2,554 ns |        3,032 ns | **1,259 ns** 🏆 |
 
 <!-- /BENCHMARK:TS_COMPARISON_RENDER -->
 
@@ -441,8 +441,8 @@ Node.js 22, 50,000 iterations, best of 5 runs
 
 | Scenario           |   md-tmpl | Handlebars |        Mustache |
 | ------------------ | --------: | ---------: | --------------: |
-| **simple**         |  9,276 ns |  80,225 ns |   **934 ns** 🏆 |
-| **loop (5 items)** | 19,706 ns | 113,190 ns | **1,861 ns** 🏆 |
+| **simple**         | 10,303 ns |  79,358 ns |   **851 ns** 🏆 |
+| **loop (5 items)** | 23,216 ns | 112,394 ns | **1,849 ns** 🏆 |
 
 <!-- /BENCHMARK:TS_COMPARISON_ROUNDTRIP -->
 

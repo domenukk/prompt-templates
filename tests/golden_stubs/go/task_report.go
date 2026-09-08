@@ -23,27 +23,10 @@ const (
 // PriorityVariants lists every value of Priority, in declaration order.
 var PriorityVariants = []Priority{PriorityCritical, PriorityHigh, PriorityMedium, PriorityLow}
 
-// Urgency is a string enum type.
-type Urgency string
-
-const (
-	// UrgencyCritical is the "Critical" variant.
-	UrgencyCritical Urgency = "Critical"
-	// UrgencyHigh is the "High" variant.
-	UrgencyHigh Urgency = "High"
-	// UrgencyMedium is the "Medium" variant.
-	UrgencyMedium Urgency = "Medium"
-	// UrgencyLow is the "Low" variant.
-	UrgencyLow Urgency = "Low"
-)
-
-// UrgencyVariants lists every value of Urgency, in declaration order.
-var UrgencyVariants = []Urgency{UrgencyCritical, UrgencyHigh, UrgencyMedium, UrgencyLow}
-
 // TasksItem is a nested type for structured fields.
 type TasksItem struct {
-	Name    string  `json:"name"`
-	Urgency Urgency `json:"urgency"`
+	Name    string   `json:"name"`
+	Urgency Priority `json:"urgency"`
 }
 
 // TaskReportParams holds the typed parameters for template rendering.

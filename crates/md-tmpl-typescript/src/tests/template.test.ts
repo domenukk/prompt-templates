@@ -13542,4 +13542,98 @@ params:
         err instanceof Error && err.message.includes("'limit' requires a list"),
     );
   });
+
+  it("rejects kind() on plain str parameter at render time", () => {
+    const src = `---
+params:
+  - msg = str
+---
+{{ kind(msg) }}`;
+    const tmpl = Template.fromSource(src);
+    assert.throws(
+      () => tmpl.render({ msg: "hello" }),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.message.includes("kind() requires an enum or option value"),
+    );
+  });
+
+  it("rejects has() on plain str parameter at render time", () => {
+    const src = `---
+params:
+  - msg = str
+---
+{{ has(msg) }}`;
+    const tmpl = Template.fromSource(src);
+    assert.throws(
+      () => tmpl.render({ msg: "hello" }),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.message.includes("has() requires an option value"),
+    );
+  });
+
+  it("rejects wildcard _ in {% case %}", () => {
+    const src = `---
+params:
+  - outcome = enum(Confirmed, NotConfirmed, Pending)
+---
+> {% match outcome %}
+> {% case Confirmed %}
+
+confirmed
+
+> {% case _ %}
+
+fallback
+
+> {% /match %}`;
+    assert.throws(
+      () => Template.fromSource(src),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.message.includes("wildcard '_' in {% case %} is not supported"),
+    );
+  });
+
+  it("rejects non-exhaustive option match without else arm", () => {
+    const src = `---
+params:
+  - opt = option(str)
+---
+> {% match opt %}
+> {% case Some && opt == "special" %}
+
+special
+
+> {% case Some %}
+
+has: {{ opt }}
+
+> {% /match %}`;
+    assert.throws(
+      () => Template.fromSource(src),
+      (err: unknown) =>
+        err instanceof Error && err.message.includes("non-exhaustive"),
+    );
+  });
+
+  it("accepts match with else arm fallback", () => {
+    const src = `---
+params:
+  - outcome = enum(Confirmed, NotConfirmed, Pending)
+---
+> {% match outcome %}
+> {% case Confirmed %}
+
+confirmed
+
+> {% else %}
+
+fallback
+
+> {% /match %}`;
+    const tmpl = Template.fromSource(src);
+    assert.strictEqual(tmpl.render({ outcome: "Pending" }).trim(), "fallback");
+  });
 });

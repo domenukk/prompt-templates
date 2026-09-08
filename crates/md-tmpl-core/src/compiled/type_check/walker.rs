@@ -54,7 +54,7 @@ fn walk_segment(
         Segment::Expr { expr, filters, .. } => match expr {
             CompiledExpr::Path(path) => {
                 validate_compiled_path(path, env, errors);
-                if filters.is_empty() {
+                if env.check_displayability && filters.is_empty() {
                     if let Some(resolved) = resolve_compiled_path_type(path, env) {
                         if !resolved.is_displayable() {
                             let hint = match resolved {
@@ -79,10 +79,10 @@ fn walk_segment(
                     }
                 }
             }
-            CompiledExpr::Len(path) | CompiledExpr::Kind(path) | CompiledExpr::Has(path) => {
-                validate_compiled_path(path, env, errors);
-            }
-            CompiledExpr::Kinds(_) => {
+            CompiledExpr::Len(_)
+            | CompiledExpr::Kind(_)
+            | CompiledExpr::Has(_)
+            | CompiledExpr::Kinds(_) => {
                 resolve_compiled_expr_type(expr, env, errors);
             }
             // Literals are always displayable scalars and loop indices are

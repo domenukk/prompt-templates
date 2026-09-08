@@ -1,6 +1,6 @@
 [package]
 name = "md-tmpl-compile-tests"
-version = "0.9.3"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Internal, unpublished compile-time template! test generator for md-tmpl"

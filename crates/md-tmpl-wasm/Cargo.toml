@@ -1,6 +1,6 @@
 [package]
 name = "md-tmpl-wasm"
-version = "0.9.3"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.85"
 description = "WebAssembly bindings for md-tmpl"
@@ -12,7 +12,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-md-tmpl = { version = "0.9.3", path = "../md-tmpl", default-features = false, features = [
+md-tmpl = { version = "0.10.0", path = "../md-tmpl", default-features = false, features = [
   "std",
   "serde",
   "flexbuffers",

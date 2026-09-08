@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "md-tmpl"
-version = "0.9.3"
+version = "0.10.0"
 description = "Strongly-typed template engine for LLM prompts"
 license = { text = "Apache-2.0 OR MIT" }
 requires-python = ">=3.10"

@@ -170,6 +170,11 @@ function resolveExpr(expr: string, scope: Scope): Value {
       case FN_KIND: {
         const val = scope.resolvePath(arg);
         const isOpt = scope.isOptionParam(arg);
+        if (!isOpt && val.type === TYPE_STR && scope.isDeclaredNonEnum(arg)) {
+          throw new TemplateSyntaxError(
+            `kind() requires an enum or option value, got str on '${arg}'`,
+          );
+        }
         const name = getVariantName(val, isOpt);
         return str(name);
       }
@@ -184,6 +189,11 @@ function resolveExpr(expr: string, scope: Scope): Value {
         );
       }
       case FN_HAS: {
+        if (scope.isDeclaredNonOption(arg)) {
+          throw new TemplateSyntaxError(
+            `has() requires an option value, got non-option on '${arg}'`,
+          );
+        }
         const val = scope.resolvePath(arg);
         if (scope.isOptionParam(arg)) {
           if (val.type === TYPE_NONE) {

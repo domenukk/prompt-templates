@@ -1,6 +1,6 @@
 [package]
 name = "md-tmpl-core"
-version = "0.9.3"
+version = "0.10.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Core template engine for md-tmpl — parsing, compilation, and rendering"

@@ -150,6 +150,8 @@ export class Template implements ITemplate, TmplRef {
   private readonly constJsValues: ReadonlyMap<string, unknown>;
   /** Pre-computed set of option-typed parameter names/paths. */
   private readonly optionParams: ReadonlySet<string>;
+  private readonly nonEnumParams: ReadonlySet<string>;
+  private readonly nonOptionParams: ReadonlySet<string>;
   private _maxIncludeDepth = 16;
   /** Optional reference to the TemplateCache that loaded this template. */
   _cache?: TemplateCache;
@@ -226,10 +228,27 @@ export class Template implements ITemplate, TmplRef {
 
     // Pre-compute option-typed parameter names for kind()/match awareness
     const optParams = new Set<string>();
+    const nonEnum = new Set<string>();
+    const nonOpt = new Set<string>();
     for (const decl of fm.params) {
       collectOptionPaths(decl.name, decl.varType, fm.typeAliases, optParams);
+      let vt = decl.varType;
+      while (vt.kind === "alias") {
+        const resolved = fm.typeAliases.get(vt.name);
+        if (!resolved) break;
+        vt = resolved;
+      }
+      const isOpt = vt.kind === "option" || optParams.has(decl.name);
+      if (vt.kind !== "enum" && !isOpt) {
+        nonEnum.add(decl.name);
+      }
+      if (!isOpt) {
+        nonOpt.add(decl.name);
+      }
     }
     this.optionParams = optParams;
+    this.nonEnumParams = nonEnum;
+    this.nonOptionParams = nonOpt;
 
     // Inject enum type constants from type aliases.
     // For each enum type (e.g., `Stage = enum(Design, Build)`), create a
@@ -651,7 +670,14 @@ params:
     for (const p of this.optionParams) {
       combinedOpts.add(p);
     }
-    const scope = new ScopeImpl(params, mergedConsts, combinedOpts);
+    const scope = new ScopeImpl(
+      params,
+      mergedConsts,
+      combinedOpts,
+      this.fm.typeAliases,
+      this.nonEnumParams,
+      this.nonOptionParams,
+    );
     const opts: RenderOptions = {
       maxIncludeDepth: maxDepth,
     };
@@ -842,6 +868,9 @@ params:
       ctx.values,
       this.constValues,
       this.optionParams,
+      this.fm.typeAliases,
+      this.nonEnumParams,
+      this.nonOptionParams,
     );
     const options: RenderOptions = {
       maxIncludeDepth: this._maxIncludeDepth,

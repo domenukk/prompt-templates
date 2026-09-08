@@ -37,7 +37,10 @@ pub(super) fn render_match(
                 }
             }
             // Narrow option so inner kind()/match see the unwrapped value.
-            let narrowed = is_option && active_variant == crate::consts::OPTION_SOME;
+            let narrowed = is_option
+                && active_variant == crate::consts::OPTION_SOME
+                && arm.variants.len() == 1
+                && arm.variants[0].as_ref() == crate::consts::OPTION_SOME;
             if narrowed {
                 scope.narrow_option(expr.as_str());
             }
@@ -73,7 +76,10 @@ pub(super) fn render_match_no_std(
                     continue;
                 }
             }
-            let narrowed = is_option && active_variant == crate::consts::OPTION_SOME;
+            let narrowed = is_option
+                && active_variant == crate::consts::OPTION_SOME
+                && arm.variants.len() == 1
+                && arm.variants[0].as_ref() == crate::consts::OPTION_SOME;
             if narrowed {
                 scope.narrow_option(expr.as_str());
             }

@@ -61,44 +61,7 @@ pub(super) fn validate_match(
             validate_match_arms_with_narrowing(expr, declared, arms, env, errors, visited);
         }
         Some(VarType::Option(ref inner)) => {
-            // Option matching: arms should be "Some" and/or "None".
-            // Validate arms contain only valid option variant names.
-            for arm in arms {
-                let is_some = arm
-                    .variants
-                    .iter()
-                    .any(|v| v.as_ref() == crate::consts::OPTION_SOME);
-                for v in &arm.variants {
-                    let name = v.as_ref();
-                    if name != crate::consts::OPTION_SOME
-                        && name != crate::consts::OPTION_NONE
-                        && name != crate::consts::MATCH_DEFAULT
-                    {
-                        errors.push(format!(
-                            "match on '{}': invalid option variant '{name}' — \
-                             expected 'Some', 'None', or '_'",
-                            expr.as_str()
-                        ));
-                    }
-                }
-                if let Some(ref guard) = arm.guard {
-                    validate_condition(guard, env, errors);
-                }
-                if is_some {
-                    let prev = env.narrow(expr.as_str(), inner.as_ref().clone());
-                    walk_segments(&arm.body, env, errors, visited);
-                    match prev {
-                        Some(t) => {
-                            env.narrow(expr.as_str(), t);
-                        }
-                        None => {
-                            env.unnarrow(expr.as_str());
-                        }
-                    }
-                } else {
-                    walk_segments(&arm.body, env, errors, visited);
-                }
-            }
+            validate_option_match_arms(expr, inner, arms, env, errors, visited);
         }
         Some(VarType::Str | VarType::Int | VarType::Bool | VarType::Float) => {
             validate_scalar_match_arms(
@@ -129,6 +92,66 @@ pub(super) fn validate_match(
             }
         }
     }
+}
+
+/// Validate match arms for `option(T)`.
+fn validate_option_match_arms(
+    expr: &CompiledPath,
+    inner: &VarType,
+    arms: &[MatchArm],
+    env: &mut TypeEnv<'_>,
+    errors: &mut Vec<String>,
+    visited: &mut HashSet<String>,
+) {
+    let mut has_default = false;
+    for arm in arms {
+        let is_some =
+            arm.variants.len() == 1 && arm.variants[0].as_ref() == crate::consts::OPTION_SOME;
+        for v in &arm.variants {
+            let name = v.as_ref();
+            if name == crate::consts::MATCH_DEFAULT && arm.guard.is_none() {
+                has_default = true;
+            }
+            if name != crate::consts::OPTION_SOME
+                && name != crate::consts::OPTION_NONE
+                && name != crate::consts::MATCH_DEFAULT
+            {
+                errors.push(format!(
+                    "match on '{}': invalid option variant '{name}' — \
+                     expected 'Some', 'None', or '_'",
+                    expr.as_str()
+                ));
+            }
+        }
+        if let Some(ref guard) = arm.guard {
+            validate_condition(guard, env, errors);
+        }
+        if is_some {
+            let prev = env.narrow(expr.as_str(), inner.clone());
+            walk_segments(&arm.body, env, errors, visited);
+            match prev {
+                Some(t) => {
+                    env.narrow(expr.as_str(), t);
+                }
+                None => {
+                    env.unnarrow(expr.as_str());
+                }
+            }
+        } else {
+            walk_segments(&arm.body, env, errors, visited);
+        }
+    }
+    let option_variants = [
+        VariantDecl {
+            name: String::from(crate::consts::OPTION_SOME),
+            fields: vec![],
+        },
+        VariantDecl {
+            name: String::from(crate::consts::OPTION_NONE),
+            fields: vec![],
+        },
+    ];
+    check_exhaustiveness(expr, &option_variants, arms, has_default, errors);
 }
 
 /// Validate match arms for scalar types (str, int, bool, float).

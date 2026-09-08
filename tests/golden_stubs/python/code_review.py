@@ -15,11 +15,6 @@ class CodeReviewFindingsItem:
     message: str
 
 @dataclass
-class FindingsFindingsItem:
-    line: int
-    message: str
-
-@dataclass
 class CodeReview:
     """Typed parameters for template ``crates/md-tmpl/prompts/code_review.tmpl.md``."""
 
@@ -34,4 +29,4 @@ class CodeReview:
         import dataclasses
         return template.render_dict(dataclasses.asdict(self))
 
-__all__ = ["CodeReview", "CodeReviewFindingsItem", "FindingsFindingsItem"]
+__all__ = ["CodeReview", "CodeReviewFindingsItem"]

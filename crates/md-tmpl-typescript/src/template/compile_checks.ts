@@ -129,6 +129,7 @@ export function walkNodesForBareEnumAccess(
 export function walkNodesForMatchTypeSafety(
   nodes: readonly Node[],
   paramTypes: ReadonlyMap<string, string>,
+  narrowedOptions: ReadonlySet<string> = new Set(),
 ): void {
   for (const node of nodes) {
     switch (node.kind) {
@@ -166,7 +167,27 @@ export function walkNodesForMatchTypeSafety(
               node.loc?.snippet,
             );
           }
-        } else if (typeKind) {
+        } else if (typeKind === "option" && !narrowedOptions.has(node.expr)) {
+          if (!node.inlineGuard && node.arms.length > 1 && !node.elseArm) {
+            const hasSome = node.arms.some(
+              (a) => !a.guard && a.variants.includes("Some"),
+            );
+            const hasNone = node.arms.some(
+              (a) => !a.guard && a.variants.includes("None"),
+            );
+            if (!hasSome || !hasNone) {
+              const missing: string[] = [];
+              if (!hasSome) missing.push("Some");
+              if (!hasNone) missing.push("None");
+              throw new TemplateSyntaxError(
+                `match on '${node.expr}': non-exhaustive — missing variant(s): ${missing.join(", ")}`,
+                node.loc?.line,
+                node.loc?.column,
+                node.loc?.snippet,
+              );
+            }
+          }
+        } else if (typeKind && !narrowedOptions.has(node.expr)) {
           // Validate label types against scalar match type.
           for (const label of allLabels) {
             if (label === "_") continue;
@@ -175,28 +196,60 @@ export function walkNodesForMatchTypeSafety(
         }
 
         for (const arm of node.arms) {
-          walkNodesForMatchTypeSafety(arm.body, paramTypes);
+          const nextNarrowed =
+            arm.variants.length === 1 && arm.variants[0] === "Some"
+              ? new Set([...narrowedOptions, node.expr])
+              : narrowedOptions;
+          walkNodesForMatchTypeSafety(arm.body, paramTypes, nextNarrowed);
         }
         if (node.elseArm) {
-          walkNodesForMatchTypeSafety(node.elseArm, paramTypes);
+          walkNodesForMatchTypeSafety(
+            node.elseArm,
+            paramTypes,
+            narrowedOptions,
+          );
         }
         if (node.inlineGuard) {
-          walkNodesForMatchTypeSafety(node.inlineGuard.body, paramTypes);
+          const nextNarrowed =
+            node.inlineGuard.variant === "Some"
+              ? new Set([...narrowedOptions, node.expr])
+              : narrowedOptions;
+          walkNodesForMatchTypeSafety(
+            node.inlineGuard.body,
+            paramTypes,
+            nextNarrowed,
+          );
         }
         break;
       }
       case "for":
-        walkNodesForMatchTypeSafety(node.body, paramTypes);
+        walkNodesForMatchTypeSafety(node.body, paramTypes, narrowedOptions);
         if (node.elseBody) {
-          walkNodesForMatchTypeSafety(node.elseBody, paramTypes);
+          walkNodesForMatchTypeSafety(
+            node.elseBody,
+            paramTypes,
+            narrowedOptions,
+          );
         }
         break;
       case "if":
         for (const branch of node.branches) {
-          walkNodesForMatchTypeSafety(branch.body, paramTypes);
+          const trimmed = branch.condition.trim();
+          let nextNarrowed = narrowedOptions;
+          if (trimmed.startsWith("has(") && trimmed.endsWith(")")) {
+            const inner = trimmed.slice(4, -1).trim();
+            if (inner.length > 0 && !inner.includes(" ")) {
+              nextNarrowed = new Set([...narrowedOptions, inner]);
+            }
+          }
+          walkNodesForMatchTypeSafety(branch.body, paramTypes, nextNarrowed);
         }
         if (node.elseBody) {
-          walkNodesForMatchTypeSafety(node.elseBody, paramTypes);
+          walkNodesForMatchTypeSafety(
+            node.elseBody,
+            paramTypes,
+            narrowedOptions,
+          );
         }
         break;
     }

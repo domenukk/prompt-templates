@@ -37,6 +37,7 @@ fmt-python:
 # Format Go files
 fmt-go:
     cd go/md_tmpl && gofmt -w .
+    cd go/cmd/pt-gen-go && gofmt -w .
 
 # Format TypeScript files with prettier
 fmt-ts:
@@ -84,7 +85,9 @@ lint-python:
 # Lint Go files (vet)
 lint-go: build-go-ffi
     cd go/md_tmpl && go vet ./...
+    cd go/cmd/pt-gen-go && go vet ./...
     @cd go/md_tmpl && if [ -n "$(gofmt -l .)" ]; then echo "Go code is not formatted. Run 'just fmt'"; exit 1; fi
+    @cd go/cmd/pt-gen-go && if [ -n "$(gofmt -l .)" ]; then echo "Go code is not formatted. Run 'just fmt'"; exit 1; fi
 
 # Lint TypeScript (strict type-check with tsc, ESLint, prettier)
 lint-ts:
@@ -147,8 +150,8 @@ test-ts: build-ts
 test-wasm: build-wasm
     cd crates/md-tmpl-wasm && npm test
 
-# Replay the shared cross-language conformance corpus against ALL FOUR backends
-test-conformance: build-ts build-go-ffi
+# Replay the shared cross-language conformance corpus against ALL FIVE backends
+test-conformance: build-ts build-go-ffi build-wasm
     @echo "── Rust conformance harness ──"
     cargo test -p md-tmpl-core --test conformance --all-features
     @echo "── TypeScript conformance harness ──"
@@ -157,6 +160,8 @@ test-conformance: build-ts build-go-ffi
     cd go/md_tmpl && go test -run TestConformance -count=1 ./...
     @echo "── Python conformance harness ──"
     cd crates/md-tmpl-python && .venv/bin/maturin develop && .venv/bin/pytest python/tests/test_conformance.py -q
+    @echo "── WASM conformance harness ──"
+    cd crates/md-tmpl-wasm && node --test dist/conformance.test.js
 
 # ── Docs ──────────────────────────────────────────────────────────────
 

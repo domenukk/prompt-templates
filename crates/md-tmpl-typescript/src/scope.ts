@@ -4,7 +4,7 @@
 
 import type { LoopMeta } from "./ast.js";
 import { type Value, getField } from "./value.js";
-import { UndefinedVariableError } from "./errors.js";
+import { TemplateSyntaxError, UndefinedVariableError } from "./errors.js";
 import {
   DOT,
   PREFIX_CONSTS_DOT,
@@ -28,17 +28,31 @@ export class Scope {
   private readonly consts: ReadonlyMap<string, Value>;
   private readonly optionParams: ReadonlySet<string>;
   private readonly typeAliases: ReadonlyMap<string, unknown>;
+  private readonly nonEnumParams: ReadonlySet<string>;
+  private readonly nonOptionParams: ReadonlySet<string>;
 
   constructor(
     ctx: ReadonlyMap<string, Value>,
     consts?: ReadonlyMap<string, Value>,
     optionParams?: ReadonlySet<string>,
     typeAliases?: ReadonlyMap<string, unknown>,
+    nonEnumParams?: ReadonlySet<string>,
+    nonOptionParams?: ReadonlySet<string>,
   ) {
     this.ctx = ctx;
     this.consts = consts ?? new Map();
     this.optionParams = optionParams ?? new Set();
     this.typeAliases = typeAliases ?? new Map();
+    this.nonEnumParams = nonEnumParams ?? new Set();
+    this.nonOptionParams = nonOptionParams ?? new Set();
+  }
+
+  isDeclaredNonEnum(path: string): boolean {
+    return this.nonEnumParams.has(path);
+  }
+
+  isDeclaredNonOption(path: string): boolean {
+    return this.nonOptionParams.has(path);
   }
 
   /**
@@ -169,6 +183,16 @@ export class Scope {
 
     // Dotted path: scan for dots without allocating an array
     const rootKey = pathStr.slice(0, firstDot);
+    if (this.isOptionParam(rootKey)) {
+      const nextDot = pathStr.indexOf(DOT, firstDot + 1);
+      const part = pathStr.slice(
+        firstDot + 1,
+        nextDot === -1 ? pathStr.length : nextDot,
+      );
+      throw new TemplateSyntaxError(
+        `cannot access field '${part}' on option — unwrap with {% if has(${rootKey}) %} or {% match ${rootKey} %}`,
+      );
+    }
     const root = this.resolve(rootKey);
     if (root === undefined) {
       throw new UndefinedVariableError(rootKey);

@@ -48,6 +48,7 @@ pub(super) fn eval_compiled_expr_into(
                     ));
                 }
                 Value::Str(s) => {
+                    check_kind_declared_type(path.as_str(), scope)?;
                     output.push_str(s);
                     return Ok(());
                 }
@@ -153,7 +154,10 @@ pub(super) fn eval_compiled_expr_val<'a>(
                         ))
                     }
                 }
-                Value::Str(s) => Ok(Cow::Owned(Value::Str(s.clone()))),
+                Value::Str(s) => {
+                    check_kind_declared_type(path.as_str(), scope)?;
+                    Ok(Cow::Owned(Value::Str(s.clone())))
+                }
                 Value::None => Ok(Cow::Owned(Value::Str(crate::consts::OPTION_NONE.into()))),
                 _ => Err(TemplateError::syntax(alloc::format!(
                     "kind() requires an enum value, got {}",
@@ -180,10 +184,40 @@ pub(super) fn eval_compiled_expr_val<'a>(
             }
         }
         CompiledExpr::Has(path) => {
+            check_has_declared_type(path.as_str(), scope)?;
             let val = scope.resolve_path(path)?;
             Ok(Cow::Owned(Value::Bool(Scope::is_option_some(val))))
         }
     }
+}
+
+fn check_kind_declared_type(path: &str, scope: &Scope<'_>) -> Result<(), TemplateError> {
+    if let Some(decl_ty) = scope.resolve_declared_type(path) {
+        let is_enum_or_option_enum = match decl_ty {
+            crate::types::VarType::Enum(_) => true,
+            crate::types::VarType::Option(inner) => {
+                matches!(inner.as_ref(), crate::types::VarType::Enum(_))
+            }
+            _ => false,
+        };
+        if !is_enum_or_option_enum {
+            return Err(TemplateError::syntax(alloc::format!(
+                "kind() requires an enum or option value, got {decl_ty} on '{path}'",
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn check_has_declared_type(path: &str, scope: &Scope<'_>) -> Result<(), TemplateError> {
+    if let Some(decl_ty) = scope.resolve_declared_type(path)
+        && !decl_ty.is_option()
+    {
+        return Err(TemplateError::syntax(alloc::format!(
+            "has() requires an option value, got {decl_ty} on '{path}'",
+        )));
+    }
+    Ok(())
 }
 
 /// Apply filters to a resolved value and render the result.

@@ -169,9 +169,8 @@ fn check_undeclared_variables(
             }
         }
     }
-    // The wildcard `_` in `{% case _ %}` and boolean literals `true`/`false`
-    // in `{% case true %}` are pattern syntax, not variable references.
-    declared.insert("_".to_string());
+    // Boolean literals `true`/`false` in `{% case true %}` are pattern syntax,
+    // not variable references.
     declared.insert("true".to_string());
     declared.insert("false".to_string());
     // `Some` and `None` are option-type sentinels used in `{% case Some %}`

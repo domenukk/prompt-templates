@@ -32,8 +32,8 @@ pub(crate) use render::render_segments_into;
 #[cfg(not(feature = "std"))]
 pub(crate) use render::render_segments_into_no_std;
 pub use type_check::{
-    validate_field_accesses, validate_field_accesses_full, validate_field_accesses_with_opaque,
-    validate_match_labels,
+    validate_field_accesses, validate_field_accesses_full, validate_field_accesses_runtime,
+    validate_field_accesses_with_opaque, validate_match_labels,
 };
 
 pub use crate::scope::{CompiledExpr, CompiledPath, ConditionOperand};
@@ -518,12 +518,12 @@ fn extract_comment_variable_refs(content: &str) -> Vec<Cow<'static, str>> {
 
 /// Compile an expression tag into a `Segment::Expr`.
 fn compile_expr(expr: &str) -> Result<Segment, TemplateError> {
-    let parts: Vec<&str> = expr.splitn(2, crate::consts::PIPE).collect();
-    let expr_obj = CompiledExpr::compile(parts[0])?;
+    let (base_expr, filter_chain) = crate::parser::split_pipe_aware(expr);
+    let expr_obj = CompiledExpr::compile(base_expr)?;
     let mut filters = Vec::new();
 
-    if parts.len() > 1 {
-        for filter_str in parts[1].split(crate::consts::PIPE) {
+    if !filter_chain.is_empty() {
+        for filter_str in crate::parser::split_filters_aware(filter_chain) {
             let filter_str = filter_str.trim();
             if filter_str.is_empty() {
                 continue;
@@ -812,6 +812,16 @@ fn compile_match<'a>(
             None
         };
 
+        let variant_part = variant_part.trim();
+        if variant_part
+            .split(crate::consts::PIPE)
+            .any(|v| v.trim() == crate::consts::MATCH_DEFAULT)
+        {
+            return Err(TemplateError::syntax(
+                "match: wildcard '_' in {% case %} is not supported — use {% else %} for fallback"
+                    .to_string(),
+            ));
+        }
         let mut arms = vec![MatchArm {
             variants: variant_part
                 .split(crate::consts::PIPE)
@@ -858,6 +868,58 @@ fn compile_match<'a>(
     }
 }
 
+fn parse_case_arm<'a>(variant: &str, after: &'a str) -> Result<(MatchArm, &'a str), TemplateError> {
+    let (variant_part, guard_str) = if let Some(pos) = variant.find(" && ") {
+        (&variant[..pos], Some(variant[pos + 4..].trim()))
+    } else {
+        (variant, None)
+    };
+    let variant_part = variant_part.trim();
+    if variant_part.is_empty() {
+        return Err(TemplateError::syntax(
+            "match: empty variant name in {% case %}".to_string(),
+        ));
+    }
+    if variant_part
+        .split(crate::consts::PIPE)
+        .any(|v| v.trim() == crate::consts::MATCH_DEFAULT)
+    {
+        return Err(TemplateError::syntax(
+            "match: wildcard '_' in {% case %} is not supported — use {% else %} for fallback"
+                .to_string(),
+        ));
+    }
+
+    let arm_body = scan_to_next_case_or_end(after)?;
+    let arm_segments = compile_body(arm_body).map_err(|e| enrich_error(e, arm_body))?;
+    let variants = variant_part
+        .split(crate::consts::PIPE)
+        .map(|v| Cow::Owned(v.trim().to_string()))
+        .collect();
+    let guard = if let Some(g) = guard_str {
+        Some(parse_condition(g)?)
+    } else {
+        None
+    };
+    let arm = MatchArm {
+        variants,
+        guard,
+        body: arm_segments,
+    };
+    Ok((arm, &after[arm_body.len()..]))
+}
+
+fn parse_else_arm(after: &str) -> Result<(MatchArm, &str), TemplateError> {
+    let arm_body = scan_to_next_case_or_end(after)?;
+    let arm_segments = compile_body(arm_body).map_err(|e| enrich_error(e, arm_body))?;
+    let arm = MatchArm {
+        variants: vec![Cow::Borrowed(crate::consts::MATCH_DEFAULT)],
+        guard: None,
+        body: arm_segments,
+    };
+    Ok((arm, &after[arm_body.len()..]))
+}
+
 /// Split a match block body into `(variant_name, body_segments)` arms.
 ///
 /// Scans for `{% case Variant %}` tags at the top level (respecting nesting
@@ -865,19 +927,14 @@ fn compile_match<'a>(
 /// (whitespace only).
 fn split_match_arms(body: &str) -> Result<MatchArms, TemplateError> {
     let mut arms = Vec::new();
-    let mut remaining = body;
+    let mut remaining = body.trim_start();
     let mut has_default = false;
 
-    // Skip whitespace before the first {% case %}.
-    remaining = remaining.trim_start();
-
-    // If remaining is empty, no arms.
     if remaining.is_empty() {
         return Ok(arms);
     }
 
     loop {
-        // Find the next {% case Variant %} or {% else %} tag.
         let scan = parser::scan_next_tag(remaining)?;
         match scan {
             parser::ScanResult::Literal(_) => break,
@@ -887,7 +944,6 @@ fn split_match_arms(body: &str) -> Result<MatchArms, TemplateError> {
                 after,
                 ..
             } => {
-                // Only whitespace allowed before the first case.
                 if !before.trim().is_empty() && arms.is_empty() {
                     return Err(TemplateError::syntax(
                         "match: unexpected text before first {% case %}".to_string(),
@@ -895,46 +951,14 @@ fn split_match_arms(body: &str) -> Result<MatchArms, TemplateError> {
                 }
 
                 if let Some(variant) = stmt.strip_prefix(TAG_CASE_PREFIX) {
-                    // {% case %} after {% else %} is not allowed.
                     if has_default {
                         return Err(TemplateError::syntax(
                             "match: {% case %} after {% else %} is not allowed".to_string(),
                         ));
                     }
-
-                    // Parse guard: `Variant && guard_condition`.
-                    let (variant_part, guard_str) = if let Some(pos) = variant.find(" && ") {
-                        (&variant[..pos], Some(variant[pos + 4..].trim()))
-                    } else {
-                        (variant, None)
-                    };
-                    let variant_part = variant_part.trim();
-                    if variant_part.is_empty() {
-                        return Err(TemplateError::syntax(
-                            "match: empty variant name in {% case %}".to_string(),
-                        ));
-                    }
-
-                    // Scan forward to find the next {% case %}, {% else %}, or end.
-                    let arm_body = scan_to_next_case_or_end(after)?;
-                    let arm_segments =
-                        compile_body(arm_body).map_err(|e| enrich_error(e, arm_body))?;
-                    let variants = variant_part
-                        .split(crate::consts::PIPE)
-                        .map(|v| Cow::Owned(v.trim().to_string()))
-                        .collect();
-                    let guard = if let Some(g) = guard_str {
-                        Some(parse_condition(g)?)
-                    } else {
-                        None
-                    };
-                    arms.push(MatchArm {
-                        variants,
-                        guard,
-                        body: arm_segments,
-                    });
-
-                    remaining = &after[arm_body.len()..];
+                    let (arm, next_remaining) = parse_case_arm(variant, after)?;
+                    arms.push(arm);
+                    remaining = next_remaining;
                     if remaining.is_empty() {
                         break;
                     }
@@ -945,18 +969,9 @@ fn split_match_arms(body: &str) -> Result<MatchArms, TemplateError> {
                         ));
                     }
                     has_default = true;
-
-                    // Scan forward to find the next {% case %}, {% else %}, or end.
-                    let arm_body = scan_to_next_case_or_end(after)?;
-                    let arm_segments =
-                        compile_body(arm_body).map_err(|e| enrich_error(e, arm_body))?;
-                    arms.push(MatchArm {
-                        variants: vec![Cow::Borrowed(crate::consts::MATCH_DEFAULT)],
-                        guard: None,
-                        body: arm_segments,
-                    });
-
-                    remaining = &after[arm_body.len()..];
+                    let (arm, next_remaining) = parse_else_arm(after)?;
+                    arms.push(arm);
+                    remaining = next_remaining;
                     if remaining.is_empty() {
                         break;
                     }

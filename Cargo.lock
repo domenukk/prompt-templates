@@ -376,7 +376,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "md-tmpl"
-version = "0.9.3"
+version = "0.10.0"
 dependencies = [
  "criterion",
  "flexbuffers",
@@ -390,7 +390,7 @@ dependencies = [
 
 [[package]]
 name = "md-tmpl-compile-tests"
-version = "0.9.3"
+version = "0.10.0"
 dependencies = [
  "md-tmpl",
  "serde",
@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "md-tmpl-core"
-version = "0.9.3"
+version = "0.10.0"
 dependencies = [
  "ciborium",
  "flexbuffers",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "md-tmpl-ffi"
-version = "0.9.3"
+version = "0.10.0"
 dependencies = [
  "flexbuffers",
  "md-tmpl",
@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "md-tmpl-macros"
-version = "0.9.3"
+version = "0.10.0"
 dependencies = [
  "hashbrown",
  "md-tmpl-core",
@@ -438,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "md-tmpl-python"
-version = "0.9.3"
+version = "0.10.0"
 dependencies = [
  "hashbrown",
  "md-tmpl",
@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "md-tmpl-wasm"
-version = "0.9.3"
+version = "0.10.0"
 dependencies = [
  "js-sys",
  "md-tmpl",

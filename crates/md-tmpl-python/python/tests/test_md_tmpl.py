@@ -4342,7 +4342,7 @@ class TestGenerateTypesSource:
 
         source = generate_types_source(tmpl_path)
         assert "from typing import Any, Optional" in source
-        assert "title: Optional[str]" in source
+        assert "title: str | None" in source
         assert "name: str" in source
 
     def test_source_empty_params(self, tmp_path: Path) -> None:

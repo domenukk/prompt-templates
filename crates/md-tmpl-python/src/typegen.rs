@@ -410,7 +410,7 @@ fn generate_types_for_aliases(
             var_type: var_type.clone(),
             default_value: None,
         };
-        generate_types_for_decl(py, &class_name, &synthetic_decl, out)?;
+        generate_types_for_decl(py, "", &synthetic_decl, out)?;
     }
     Ok(())
 }
@@ -472,25 +472,32 @@ pub(crate) fn generate_python_source_for_template(path: &str) -> PyResult<String
     writeln!(out).expect("write to String");
 
     // Collect nested type definitions first.
-    let mut nested_defs: Vec<String> = Vec::new();
+    let mut nested_defs: Vec<GeneratedTypeDef> = Vec::new();
+    let mut enum_aliases: Vec<(Vec<VariantDecl>, String)> = Vec::new();
+
+    for (alias_name, var_type) in tmpl.type_aliases() {
+        if let VarType::Enum(variants) = var_type {
+            enum_aliases.push((variants.clone(), to_pascal_case(alias_name)));
+        }
+    }
+
     for decl in decls {
-        source_gen_types_for_decl(&params_class_name, decl, &mut nested_defs);
+        source_gen_types_for_decl(
+            &params_class_name,
+            decl,
+            &mut nested_defs,
+            &mut enum_aliases,
+        );
     }
 
     // Generate types for explicit type aliases from the `types:` block.
-    let existing_names: std::collections::HashSet<String> = nested_defs
-        .iter()
-        .filter_map(|d| {
-            // Extract class name from "class Foo:" or "@dataclass\nclass Foo:"
-            d.lines()
-                .find(|l| l.starts_with("class "))
-                .and_then(|l| l.strip_prefix("class "))
-                .and_then(|l| l.split(['(', ':']).next())
-                .map(String::from)
-        })
-        .collect();
+    let existing_names: std::collections::HashSet<String> =
+        nested_defs.iter().map(|d| d.class_name.clone()).collect();
 
     for (alias_name, var_type) in tmpl.type_aliases() {
+        if matches!(var_type, VarType::List(_)) {
+            continue;
+        }
         let class_name = to_pascal_case(alias_name);
         if existing_names.contains(&class_name) {
             continue;
@@ -500,29 +507,22 @@ pub(crate) fn generate_python_source_for_template(path: &str) -> PyResult<String
             var_type: var_type.clone(),
             default_value: None,
         };
-        source_gen_types_for_decl(&class_name, &synthetic_decl, &mut nested_defs);
+        source_gen_types_for_decl("", &synthetic_decl, &mut nested_defs, &mut enum_aliases);
     }
+
+    deduplicate_nested_defs(&mut nested_defs);
 
     // Write nested types before the params class (forward reference order).
     for def in &nested_defs {
-        writeln!(out, "{def}").expect("write to String");
+        writeln!(out, "{}", def.source).expect("write to String");
     }
 
     // Write the params class.
-    source_gen_params_class(&mut out, &params_class_name, decls, path);
+    source_gen_params_class(&mut out, &params_class_name, decls, path, &enum_aliases);
 
     // Write __all__.
     // Also export nested type names.
-    let nested_names: Vec<String> = nested_defs
-        .iter()
-        .filter_map(|d| {
-            d.lines()
-                .find(|l| l.starts_with("class "))
-                .and_then(|l| l.strip_prefix("class "))
-                .and_then(|l| l.split(['(', ':']).next())
-                .map(String::from)
-        })
-        .collect();
+    let nested_names: Vec<String> = nested_defs.iter().map(|d| d.class_name.clone()).collect();
     let mut all_names: Vec<String> = vec![params_class_name.clone()];
     all_names.extend(nested_names);
 
@@ -533,27 +533,53 @@ pub(crate) fn generate_python_source_for_template(path: &str) -> PyResult<String
     Ok(out)
 }
 
+struct GeneratedTypeDef {
+    class_name: String,
+    source: String,
+}
+
 /// Recursively generate Python source definitions for a single declaration.
-fn source_gen_types_for_decl(parent_name: &str, decl: &VarDecl, out: &mut Vec<String>) {
+fn source_gen_types_for_decl(
+    parent_name: &str,
+    decl: &VarDecl,
+    out: &mut Vec<GeneratedTypeDef>,
+    enum_aliases: &mut Vec<(Vec<VariantDecl>, String)>,
+) {
     match &decl.var_type {
         VarType::Enum(variants) => {
-            let enum_name = to_pascal_case(&decl.name);
-            out.push(source_gen_enum_class(&enum_name, variants));
+            let enum_name =
+                if let Some((_, existing)) = enum_aliases.iter().find(|(v, _)| v == variants) {
+                    existing.clone()
+                } else {
+                    let name = to_pascal_case(&decl.name);
+                    enum_aliases.push((variants.clone(), name.clone()));
+                    name
+                };
+            out.push(GeneratedTypeDef {
+                class_name: enum_name.clone(),
+                source: source_gen_enum_class(&enum_name, variants, enum_aliases),
+            });
         }
         VarType::List(fields) if !fields.is_empty() => {
             let item_name = format!("{parent_name}{}Item", to_pascal_case(&decl.name));
             // Recurse for nested types within list items first.
             for field in fields {
-                source_gen_types_for_decl(&item_name, field, out);
+                source_gen_types_for_decl(&item_name, field, out, enum_aliases);
             }
-            out.push(source_gen_model_class(&item_name, fields));
+            out.push(GeneratedTypeDef {
+                class_name: item_name.clone(),
+                source: source_gen_model_class(&item_name, fields, enum_aliases),
+            });
         }
         VarType::Struct(fields) if !fields.is_empty() => {
             let struct_name = to_pascal_case(&decl.name);
             for field in fields {
-                source_gen_types_for_decl(&struct_name, field, out);
+                source_gen_types_for_decl(&struct_name, field, out, enum_aliases);
             }
-            out.push(source_gen_model_class(&struct_name, fields));
+            out.push(GeneratedTypeDef {
+                class_name: struct_name.clone(),
+                source: source_gen_model_class(&struct_name, fields, enum_aliases),
+            });
         }
         VarType::Option(inner) => {
             let inner_decl = VarDecl {
@@ -561,14 +587,18 @@ fn source_gen_types_for_decl(parent_name: &str, decl: &VarDecl, out: &mut Vec<St
                 var_type: (**inner).clone(),
                 default_value: None,
             };
-            source_gen_types_for_decl(parent_name, &inner_decl, out);
+            source_gen_types_for_decl(parent_name, &inner_decl, out, enum_aliases);
         }
         _ => {}
     }
 }
 
 /// Generate Python source for a `Variants` enum subclass.
-fn source_gen_enum_class(name: &str, variants: &[VariantDecl]) -> String {
+fn source_gen_enum_class(
+    name: &str,
+    variants: &[VariantDecl],
+    enum_aliases: &[(Vec<VariantDecl>, String)],
+) -> String {
     let mut s = String::new();
     writeln!(s, "class {name}(Variants):").expect("write to String");
     if variants.is_empty() {
@@ -586,7 +616,12 @@ fn source_gen_enum_class(name: &str, variants: &[VariantDecl]) -> String {
                     format!(
                         "\"{}\": {}",
                         f.name,
-                        vartype_to_python_source_annotation(&f.var_type, name, &f.name)
+                        vartype_to_python_source_annotation(
+                            &f.var_type,
+                            name,
+                            &f.name,
+                            enum_aliases
+                        )
                     )
                 })
                 .collect();
@@ -597,7 +632,11 @@ fn source_gen_enum_class(name: &str, variants: &[VariantDecl]) -> String {
 }
 
 /// Generate Python source for a `@dataclass` model class.
-fn source_gen_model_class(name: &str, fields: &[VarDecl]) -> String {
+fn source_gen_model_class(
+    name: &str,
+    fields: &[VarDecl],
+    enum_aliases: &[(Vec<VariantDecl>, String)],
+) -> String {
     let mut s = String::new();
     writeln!(s, "@dataclass").expect("write to String");
     writeln!(s, "class {name}:").expect("write to String");
@@ -610,7 +649,7 @@ fn source_gen_model_class(name: &str, fields: &[VarDecl]) -> String {
             s,
             "    {}: {}",
             f.name,
-            vartype_to_python_source_annotation(&f.var_type, name, &f.name)
+            vartype_to_python_source_annotation(&f.var_type, name, &f.name, enum_aliases)
         )
         .expect("write to String");
     }
@@ -618,7 +657,13 @@ fn source_gen_model_class(name: &str, fields: &[VarDecl]) -> String {
 }
 
 /// Generate the params `@dataclass` with a typed `render()` method.
-fn source_gen_params_class(out: &mut String, name: &str, decls: &[VarDecl], template_path: &str) {
+fn source_gen_params_class(
+    out: &mut String,
+    name: &str,
+    decls: &[VarDecl],
+    template_path: &str,
+    enum_aliases: &[(Vec<VariantDecl>, String)],
+) {
     writeln!(out, "@dataclass").expect("write to String");
     writeln!(out, "class {name}:").expect("write to String");
     writeln!(
@@ -645,13 +690,13 @@ fn source_gen_params_class(out: &mut String, name: &str, decls: &[VarDecl], temp
             out,
             "    {}: {}",
             d.name,
-            vartype_to_python_source_annotation(&d.var_type, name, &d.name)
+            vartype_to_python_source_annotation(&d.var_type, name, &d.name, enum_aliases)
         )
         .expect("write to String");
     }
 
     for d in &optional {
-        let ann = vartype_to_python_source_annotation(&d.var_type, name, &d.name);
+        let ann = vartype_to_python_source_annotation(&d.var_type, name, &d.name, enum_aliases);
         let Some(default_val) = d.default_value.as_ref() else {
             continue;
         };
@@ -683,7 +728,7 @@ fn source_gen_render_method(out: &mut String, template_path: &str) {
     writeln!(out, "        if template is None:").expect("write to String");
     writeln!(
         out,
-        "            template = Template.from_file({template_path:?})"
+        "            template = Template.from_file(\"{template_path}\")"
     )
     .expect("write to String");
     writeln!(out, "        import dataclasses").expect("write to String");
@@ -706,20 +751,17 @@ fn decls_need_field(decls: &[VarDecl]) -> bool {
     decls.iter().any(|d| d.default_value.is_some())
 }
 
-/// Convert a `Value` default to a Python literal string.
-fn default_to_python_repr(value: &md_tmpl::Value) -> String {
+/// Convert a default [`Value`] to its Python literal repr string.
+fn default_to_python_repr(val: &md_tmpl::Value) -> String {
     use md_tmpl::Value;
-    match value {
+    match val {
         Value::Str(s) => format!("{s:?}"),
-        Value::Int(n) => n.to_string(),
-        Value::Float(f) => format!("{f}"),
-        Value::Bool(b) => {
-            if *b {
-                "True".into()
-            } else {
-                "False".into()
-            }
+        Value::Int(i) => i.to_string(),
+        Value::Float(f) => {
+            let s = f.to_string();
+            if s.contains('.') { s } else { format!("{s}.0") }
         }
+        Value::Bool(b) => if *b { "True" } else { "False" }.into(),
         Value::List(items) => {
             if items.is_empty() {
                 "[]".into()
@@ -744,14 +786,29 @@ fn default_to_python_repr(value: &md_tmpl::Value) -> String {
     }
 }
 
-/// Python annotation for source-code generation (same logic as runtime annotations).
+fn deduplicate_nested_defs(nested_defs: &mut Vec<GeneratedTypeDef>) {
+    let mut seen_classes = std::collections::HashSet::new();
+    nested_defs.retain(|def| seen_classes.insert(def.class_name.clone()));
+}
+
+/// Python annotation for source-code generation (reuses `enum_aliases` when present).
 fn vartype_to_python_source_annotation(
     vt: &VarType,
     parent_name: &str,
     field_name: &str,
+    enum_aliases: &[(Vec<VariantDecl>, String)],
 ) -> String {
-    // Reuse the same logic as runtime annotations.
-    vartype_to_python_annotation(vt, parent_name, field_name)
+    match vt {
+        VarType::Enum(variants) => match enum_aliases.iter().find(|(v, _)| v == variants) {
+            Some((_, alias_name)) => alias_name.clone(),
+            None => to_pascal_case(field_name),
+        },
+        VarType::Option(inner) => format!(
+            "{} | None",
+            vartype_to_python_source_annotation(inner, parent_name, field_name, enum_aliases)
+        ),
+        _ => vartype_to_python_annotation(vt, parent_name, field_name),
+    }
 }
 
 #[cfg(test)]
@@ -861,6 +918,7 @@ mod tests {
                     }],
                 },
             ],
+            &[],
         );
         assert!(source.contains("class Status(Variants):"));
         assert!(source.contains("Approved = ()"));
@@ -884,6 +942,7 @@ mod tests {
                     default_value: None,
                 },
             ],
+            &[],
         );
         assert!(source.contains("@dataclass"));
         assert!(source.contains("class ReviewItem:"));
@@ -910,6 +969,7 @@ mod tests {
                 },
             ],
             "prompts/review.tmpl.md",
+            &[],
         );
         assert!(out.contains("@dataclass"));
         assert!(out.contains("class ReviewParams:"));
@@ -929,6 +989,7 @@ mod tests {
                 default_value: None,
             }],
             "prompts/greeting.tmpl.md",
+            &[],
         );
         assert!(
             out.contains("def render(self, template: Template | None = None) -> str:"),
@@ -947,7 +1008,7 @@ mod tests {
     #[test]
     fn source_gen_params_empty_still_has_render() {
         let mut out = String::new();
-        source_gen_params_class(&mut out, "Empty", &[], "empty.tmpl.md");
+        source_gen_params_class(&mut out, "Empty", &[], "empty.tmpl.md", &[]);
         assert!(
             out.contains("def render(self"),
             "empty params class should still have render(), got: {out}"
@@ -973,6 +1034,7 @@ mod tests {
                 },
             ],
             "greeting.tmpl.md",
+            &[],
         );
         assert!(
             out.contains("name: str = field(default=\"World\")"),
@@ -1003,6 +1065,7 @@ mod tests {
                 },
             ],
             "mixed.tmpl.md",
+            &[],
         );
         // Required fields must come before optional in the output.
         let req_pos = out.find("required: str").expect("should have required");

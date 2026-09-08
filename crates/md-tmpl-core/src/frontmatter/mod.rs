@@ -188,6 +188,42 @@ impl Frontmatter {
             &opaque_roots,
         )
     }
+
+    /// Validate field types, built-in function argument types, and match
+    /// exhaustiveness/narrowing for runtime templates (`Template::from_source`).
+    ///
+    /// Identical to [`Self::validate_field_types`], except static displayability
+    /// checks (`{{ struct }}`, `{{ list }}`, `{{ option }}`) are deferred to
+    /// render time.
+    #[must_use]
+    pub fn validate_runtime_types(&self, segments: &[crate::compiled::Segment]) -> Vec<String> {
+        let mut opaque_roots: crate::compat::HashSet<String> = crate::compat::HashSet::new();
+        let mut declarations: Vec<VarDecl> = self.declarations.clone();
+
+        for import in &self.imports {
+            opaque_roots.insert(import.stem.clone());
+            if let Some(ns_type) = self.imported_namespace_types.get(&import.stem) {
+                declarations.push(VarDecl {
+                    name: import.stem.clone(),
+                    var_type: ns_type.clone(),
+                    default_value: None,
+                });
+            }
+        }
+        for c in &self.consts {
+            declarations.push(c.clone());
+        }
+        for e in &self.env {
+            declarations.push(e.clone());
+        }
+
+        crate::compiled::validate_field_accesses_runtime(
+            segments,
+            &declarations,
+            &self.type_aliases,
+            &opaque_roots,
+        )
+    }
 }
 
 /// Strip YAML frontmatter delimited by `---` and return only the body text.

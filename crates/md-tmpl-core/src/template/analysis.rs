@@ -251,11 +251,6 @@ pub(super) fn check_undeclared_variables(
     for inline_name in inline_templates.keys() {
         declared.insert(inline_name.clone());
     }
-    // The wildcard `_` in `{% case _ %}` / `{% match x case _ %}` is pattern
-    // syntax, not a variable reference. Mark it as known so it is never flagged.
-    // Boolean literals `true`/`false` no longer need whitelisting: they are
-    // parsed as literal values (never variable references) in every position.
-    declared.insert("_".into());
     // `Some` and `None` are option-type sentinels used in `{% case Some %}`
     // and `{% case None %}` arms.
     declared.insert(crate::consts::OPTION_SOME.into());

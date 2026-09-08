@@ -14,10 +14,6 @@ class GreetingItemsItem:
     label: str
 
 @dataclass
-class ItemsItemsItem:
-    label: str
-
-@dataclass
 class Greeting:
     """Typed parameters for template ``crates/md-tmpl/prompts/greeting.tmpl.md``."""
 
@@ -32,4 +28,4 @@ class Greeting:
         import dataclasses
         return template.render_dict(dataclasses.asdict(self))
 
-__all__ = ["Greeting", "GreetingItemsItem", "ItemsItemsItem"]
+__all__ = ["Greeting", "GreetingItemsItem"]

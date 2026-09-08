@@ -387,26 +387,7 @@ impl Template {
         let (segments, inline_templates) = compiled::compile(&body, &fm.type_aliases)?;
 
         // --- Static analysis ---
-        let referenced = compiled::collect_referenced_params(&segments);
-        let case_labels = compiled::collect_unquoted_case_labels(&segments);
-        check_undeclared_variables(&referenced, &fm, &inline_templates)?;
-        check_unused_params(
-            &fm.declarations,
-            &referenced,
-            &case_labels,
-            force_allow_unused || fm.allow_unused,
-        )?;
-        check_name_collisions(&fm, &inline_templates, &segments)?;
-        let enum_keys = collect_enum_type_keys(&fm);
-        check_bare_enum_access(&segments, &enum_keys)?;
-        check_static_enum_in_conditions(&segments, &fm.type_aliases)?;
-        check_internal_key_access(&segments)?;
-        // Match-label validation: kind() detection, label type consistency.
-        let label_errors =
-            compiled::validate_match_labels(&segments, &fm.declarations, &fm.type_aliases);
-        if !label_errors.is_empty() {
-            return Err(TemplateError::Syntax(label_errors.join("; ").into()));
-        }
+        run_static_analysis(&segments, &fm, &inline_templates, force_allow_unused)?;
 
         let has_defaults = fm.declarations.iter().any(|d| d.default_value.is_some());
         let mut consts: HashMap<String, Value> = fm
@@ -468,26 +449,7 @@ impl Template {
         let body = body.to_string();
         let (segments, inline_templates) = compiled::compile(&body, &fm.type_aliases)?;
 
-        let referenced = compiled::collect_referenced_params(&segments);
-        let case_labels = compiled::collect_unquoted_case_labels(&segments);
-        check_undeclared_variables(&referenced, &fm, &inline_templates)?;
-        check_unused_params(
-            &fm.declarations,
-            &referenced,
-            &case_labels,
-            force_allow_unused || fm.allow_unused,
-        )?;
-        check_name_collisions(&fm, &inline_templates, &segments)?;
-        let enum_keys = collect_enum_type_keys(&fm);
-        check_bare_enum_access(&segments, &enum_keys)?;
-        check_static_enum_in_conditions(&segments, &fm.type_aliases)?;
-        check_internal_key_access(&segments)?;
-        // Match-label validation: kind() detection, label type consistency.
-        let label_errors =
-            compiled::validate_match_labels(&segments, &fm.declarations, &fm.type_aliases);
-        if !label_errors.is_empty() {
-            return Err(TemplateError::Syntax(label_errors.join("; ").into()));
-        }
+        run_static_analysis(&segments, &fm, &inline_templates, force_allow_unused)?;
 
         let has_defaults = fm.declarations.iter().any(|d| d.default_value.is_some());
         let mut consts: HashMap<String, Value> = fm
@@ -957,6 +919,34 @@ impl<'de> serde::Deserialize<'de> for Template {
              Template::from_source() or Template::from_file()",
         ))
     }
+}
+
+fn run_static_analysis(
+    segments: &[Segment],
+    fm: &Frontmatter,
+    inline_templates: &HashMap<String, compiled::CompiledInlineTemplate>,
+    force_allow_unused: bool,
+) -> Result<(), TemplateError> {
+    let referenced = compiled::collect_referenced_params(segments);
+    let case_labels = compiled::collect_unquoted_case_labels(segments);
+    check_undeclared_variables(&referenced, fm, inline_templates)?;
+    check_unused_params(
+        &fm.declarations,
+        &referenced,
+        &case_labels,
+        force_allow_unused || fm.allow_unused,
+    )?;
+    check_name_collisions(fm, inline_templates, segments)?;
+    let enum_keys = collect_enum_type_keys(fm);
+    check_bare_enum_access(segments, &enum_keys)?;
+    check_static_enum_in_conditions(segments, &fm.type_aliases)?;
+    check_internal_key_access(segments)?;
+    let label_errors =
+        compiled::validate_match_labels(segments, &fm.declarations, &fm.type_aliases);
+    if !label_errors.is_empty() {
+        return Err(TemplateError::Syntax(label_errors.join("; ").into()));
+    }
+    Ok(())
 }
 
 /// Load a named template from a directory.

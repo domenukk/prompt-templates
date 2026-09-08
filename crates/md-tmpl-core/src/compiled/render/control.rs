@@ -141,7 +141,17 @@ pub(super) fn render_if(
     }
 
     if !else_body.is_empty() {
-        render_segments_into(else_body, scope, base_dir, output)?;
+        let neg_narrowed = branches
+            .first()
+            .and_then(|(cond, _)| extract_negated_has_option_path(cond, scope));
+        if let Some(path) = neg_narrowed {
+            scope.narrow_option(path);
+        }
+        let result = render_segments_into(else_body, scope, base_dir, output);
+        if let Some(path) = neg_narrowed {
+            scope.unnarrow_option(path);
+        }
+        return result;
     }
 
     Ok(())
@@ -170,7 +180,17 @@ pub(super) fn render_if_no_std(
     }
 
     if !else_body.is_empty() {
-        render_segments_into_no_std(else_body, scope, output)?;
+        let neg_narrowed = branches
+            .first()
+            .and_then(|(cond, _)| extract_negated_has_option_path(cond, scope));
+        if let Some(path) = neg_narrowed {
+            scope.narrow_option(path);
+        }
+        let result = render_segments_into_no_std(else_body, scope, output);
+        if let Some(path) = neg_narrowed {
+            scope.unnarrow_option(path);
+        }
+        return result;
     }
 
     Ok(())
@@ -189,6 +209,17 @@ fn extract_has_option_path<'a>(condition: &'a Condition, scope: &Scope<'_>) -> O
     let path_str = path.as_str();
     if scope.is_option_path(path_str) {
         Some(path_str)
+    } else {
+        None
+    }
+}
+
+fn extract_negated_has_option_path<'a>(
+    condition: &'a Condition,
+    scope: &Scope<'_>,
+) -> Option<&'a str> {
+    if let Condition::Not(inner) = condition {
+        extract_has_option_path(inner, scope)
     } else {
         None
     }

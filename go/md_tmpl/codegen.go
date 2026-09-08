@@ -107,11 +107,17 @@ func GenerateTypesFromFile(path string, opts ...GenOption) (string, error) {
 // Code generation core
 // ---------------------------------------------------------------------------
 
+type emittedEnum struct {
+	name     string
+	variants []variantNode
+}
+
 // codegenContext accumulates generated Go source pieces.
 type codegenContext struct {
 	opts           *genOptions
 	auxiliaryTypes []string        // Nested struct/enum definitions.
 	generatedNames map[string]bool // Dedup set for generated type names.
+	emittedEnums   []emittedEnum   // Structural deduplication for emitted enum types.
 
 	// Import requirements discovered while resolving types. Sealed enum
 	// output references the md_tmpl runtime, encoding/json, and fmt.
@@ -238,6 +244,45 @@ func generateFromTemplate(tmpl *Template, opts *genOptions) (string, error) {
 	return string(formatted), nil
 }
 
+func equalTypeNode(a, b typeNode) bool {
+	if a.kind != b.kind || a.aliasName != b.aliasName {
+		return false
+	}
+	if (a.innerType == nil) != (b.innerType == nil) {
+		return false
+	}
+	if a.innerType != nil && !equalTypeNode(*a.innerType, *b.innerType) {
+		return false
+	}
+	if len(a.fields) != len(b.fields) {
+		return false
+	}
+	for i := range a.fields {
+		if a.fields[i].name != b.fields[i].name || !equalTypeNode(a.fields[i].typeNode, b.fields[i].typeNode) {
+			return false
+		}
+	}
+	return equalVariants(a.variants, b.variants)
+}
+
+func equalVariants(a, b []variantNode) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].name != b[i].name || len(a[i].fields) != len(b[i].fields) {
+			return false
+		}
+		for j := range a[i].fields {
+			if a[i].fields[j].name != b[i].fields[j].name ||
+				!equalTypeNode(a[i].fields[j].typeNode, b[i].fields[j].typeNode) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // resolveType converts a parsed typeNode into a Go type string, emitting
 // auxiliary type definitions as needed.
 func (c *codegenContext) resolveType(fieldName string, node typeNode) string {
@@ -268,7 +313,13 @@ func (c *codegenContext) resolveType(fieldName string, node typeNode) string {
 		return structName
 
 	case kindEnum:
+		for _, existing := range c.emittedEnums {
+			if equalVariants(existing.variants, node.variants) {
+				return existing.name
+			}
+		}
 		enumName := toPascalCase(fieldName)
+		c.emittedEnums = append(c.emittedEnums, emittedEnum{name: enumName, variants: node.variants})
 		c.emitEnum(enumName, node.variants)
 		return enumName
 

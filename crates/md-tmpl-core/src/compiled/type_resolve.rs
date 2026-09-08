@@ -72,10 +72,26 @@ pub(super) fn resolve_compiled_expr_type(
         }),
         CompiledExpr::Len(path) => {
             validate_compiled_path(path, env, errors);
+            if let Some(ty) = resolve_compiled_path_type(path, env)
+                && !matches!(ty, VarType::List(_) | VarType::Str)
+            {
+                errors.push(format!(
+                    "'len()' requires a list or str type, got {ty} on '{}'",
+                    path.as_str()
+                ));
+            }
             Some(VarType::Int)
         }
         CompiledExpr::Kind(path) => {
             validate_compiled_path(path, env, errors);
+            if let Some(ty) = resolve_compiled_path_type(path, env)
+                && !matches!(ty, VarType::Enum(_) | VarType::Option(_))
+            {
+                errors.push(format!(
+                    "'kind()' requires an enum or option type, got {ty} on '{}'",
+                    path.as_str()
+                ));
+            }
             Some(VarType::Str)
         }
         CompiledExpr::Kinds(path) => {
@@ -95,6 +111,14 @@ pub(super) fn resolve_compiled_expr_type(
         }
         CompiledExpr::Has(path) => {
             validate_compiled_path(path, env, errors);
+            if let Some(ty) = resolve_compiled_path_type(path, env)
+                && !ty.is_option()
+            {
+                errors.push(format!(
+                    "'has()' requires an option type, got {ty} on '{}'",
+                    path.as_str()
+                ));
+            }
             Some(VarType::Bool)
         }
     }
@@ -148,11 +172,41 @@ pub(super) fn validate_operand(
         ConditionOperand::Literal(_)
         | ConditionOperand::Idx(_)
         | ConditionOperand::InterpolatedStr(_) => {}
-        ConditionOperand::Path { path, .. }
-        | ConditionOperand::Len(path)
-        | ConditionOperand::Kind(path)
-        | ConditionOperand::Kinds(path) => {
+        ConditionOperand::Path { path, .. } => {
             validate_compiled_path(path, env, errors);
+        }
+        ConditionOperand::Len(path) => {
+            validate_compiled_path(path, env, errors);
+            if let Some(ty) = resolve_compiled_path_type(path, env)
+                && !matches!(ty, VarType::List(_) | VarType::Str)
+            {
+                errors.push(format!(
+                    "'len()' requires a list or str type, got {ty} on '{}'",
+                    path.as_str()
+                ));
+            }
+        }
+        ConditionOperand::Kind(path) => {
+            validate_compiled_path(path, env, errors);
+            if let Some(ty) = resolve_compiled_path_type(path, env)
+                && !matches!(ty, VarType::Enum(_) | VarType::Option(_))
+            {
+                errors.push(format!(
+                    "'kind()' requires an enum or option type, got {ty} on '{}'",
+                    path.as_str()
+                ));
+            }
+        }
+        ConditionOperand::Kinds(path) => {
+            validate_compiled_path(path, env, errors);
+            if let Some(ty) = resolve_compiled_path_type(path, env)
+                && !matches!(ty, VarType::Enum(_))
+            {
+                errors.push(format!(
+                    "kinds('{}'): expected enum type namespace, got {ty}",
+                    path.as_str()
+                ));
+            }
         }
         ConditionOperand::Has(path) => {
             validate_compiled_path(path, env, errors);

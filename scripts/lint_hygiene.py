@@ -30,8 +30,8 @@ GO_DIRS = ["go/"]
 GO_EXTS = {".go"}
 PY_DIRS = ["crates/md-tmpl-python/python/"]
 PY_EXTS = {".py"}
-ALL_DIRS = RUST_DIRS + TS_DIRS
-ALL_EXTS = RUST_EXTS | TS_EXTS
+ALL_DIRS = RUST_DIRS + TS_DIRS + GO_DIRS + PY_DIRS
+ALL_EXTS = RUST_EXTS | TS_EXTS | GO_EXTS | PY_EXTS
 
 # Suppression markers.
 NOLINT_WITH_REASON = re.compile(r"//\s*NOLINT:\s*\S")
@@ -566,8 +566,7 @@ def main() -> int:
     failed = run_bare_nolint_check() or failed
     failed = run_empty_catch_check() or failed
     failed = run_packaging_invariant_check() or failed
-    # Long file check is advisory — warns but doesn't fail the lint.
-    run_long_file_check()
+    failed = run_long_file_check() or failed
 
     print()
     if failed:

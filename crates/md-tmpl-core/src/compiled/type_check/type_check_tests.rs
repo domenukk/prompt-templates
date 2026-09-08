@@ -2966,9 +2966,9 @@ fn option_type_in_if_condition_succeeds_and_narrows() {
 params:
   - opt = option(str) := None
 ---
-> {% if opt %} · {{ opt }}{% /if %}",
+> {% if has(opt) %} · {{ opt }}{% /if %}",
     )
-    .expect("option in if condition should compile and narrow");
+    .expect("option in has() condition should compile and narrow");
 
     let mut ctx = crate::Context::new();
     assert_eq!(tmpl.render_ctx(&ctx).unwrap(), "");
@@ -3160,4 +3160,219 @@ params:
 
     ctx.set("test", "hello");
     assert_eq!(tmpl.render_ctx(&ctx).unwrap(), "val: hello");
+}
+
+#[test]
+fn kind_on_plain_str_is_compile_error() {
+    let decls = vec![VarDecl {
+        name: "msg".to_string(),
+        var_type: VarType::Str,
+        default_value: None,
+    }];
+    let tmpl_str = r"---
+params:
+  - msg = str
+---
+{{ kind(msg) }}";
+    let errors = compile_and_check(tmpl_str, &decls);
+    assert_eq!(errors.len(), 1, "expected compile error: {errors:?}");
+    assert!(
+        errors[0].contains("'kind()' requires an enum or option type, got str"),
+        "unexpected error: {}",
+        errors[0]
+    );
+
+    // Also verify runtime Scope rejects kind(plain_str_param)
+    let tmpl = crate::Template::from_source(tmpl_str).unwrap();
+    let mut ctx = crate::Context::new();
+    ctx.set("msg", "hello");
+    let render_err = tmpl.render_ctx(&ctx).unwrap_err();
+    assert!(
+        render_err
+            .to_string()
+            .contains("kind() requires an enum or option value, got str on 'msg'"),
+        "unexpected render error: {render_err}"
+    );
+}
+
+#[test]
+fn len_on_int_is_compile_error() {
+    let decls = vec![VarDecl {
+        name: "count".to_string(),
+        var_type: VarType::Int,
+        default_value: None,
+    }];
+    let tmpl_str = r"---
+params:
+  - count = int
+---
+{{ len(count) }}";
+    let errors = compile_and_check(tmpl_str, &decls);
+    assert_eq!(errors.len(), 1, "expected compile error: {errors:?}");
+    assert!(
+        errors[0].contains("'len()' requires a list or str type, got int"),
+        "unexpected error: {}",
+        errors[0]
+    );
+}
+
+#[test]
+fn has_in_expr_on_plain_str_is_compile_error() {
+    let decls = vec![VarDecl {
+        name: "label".to_string(),
+        var_type: VarType::Str,
+        default_value: None,
+    }];
+    let tmpl_str = r"---
+params:
+  - label = str
+---
+{{ has(label) }}";
+    let errors = compile_and_check(tmpl_str, &decls);
+    assert_eq!(errors.len(), 1, "expected compile error: {errors:?}");
+    assert!(
+        errors[0].contains("'has()' requires an option type, got str"),
+        "unexpected error: {}",
+        errors[0]
+    );
+
+    // Also verify runtime Scope rejects has(plain_str_param)
+    let tmpl = crate::Template::from_source(tmpl_str).unwrap();
+    let mut ctx = crate::Context::new();
+    ctx.set("label", "hello");
+    let render_err = tmpl.render_ctx(&ctx).unwrap_err();
+    assert!(
+        render_err
+            .to_string()
+            .contains("has() requires an option value, got str on 'label'"),
+        "unexpected render error: {render_err}"
+    );
+}
+
+#[test]
+fn option_match_non_exhaustive_missing_none_is_compile_error() {
+    let decls = vec![VarDecl {
+        name: "opt".to_string(),
+        var_type: VarType::Option(Box::new(VarType::Str)),
+        default_value: None,
+    }];
+    let tmpl_str = r#"---
+params:
+  - opt = option(str)
+---
+
+> {% match opt %}
+> {% case Some && opt == "special" %}
+
+special: {{ opt }}
+
+> {% case Some %}
+
+has: {{ opt }}
+
+> {% /match %}"#;
+    let errors = compile_and_check(tmpl_str, &decls);
+    assert_eq!(errors.len(), 1, "expected non-exhaustive error: {errors:?}");
+    assert!(
+        errors[0].contains("non-exhaustive") && errors[0].contains("None"),
+        "unexpected error message: {}",
+        errors[0]
+    );
+}
+
+#[test]
+fn option_match_some_or_none_does_not_unsoundly_narrow() {
+    let decls = vec![VarDecl {
+        name: "opt".to_string(),
+        var_type: VarType::Option(Box::new(VarType::Struct(vec![VarDecl {
+            name: "title".to_string(),
+            var_type: VarType::Str,
+            default_value: None,
+        }]))),
+        default_value: None,
+    }];
+    let tmpl_str = r"---
+params:
+  - opt = option(struct(title = str))
+---
+
+> {% match opt %}
+> {% case Some | None %}
+
+{{ opt.title }}
+
+> {% /match %}";
+    let errors = compile_and_check(tmpl_str, &decls);
+    assert_eq!(errors.len(), 1, "expected error: {errors:?}");
+    assert!(
+        errors[0].contains("cannot access field 'title' on option"),
+        "unexpected error message: {}",
+        errors[0]
+    );
+}
+
+#[test]
+fn case_wildcard_is_rejected_in_match() {
+    let tmpl = r"---
+params:
+  - outcome = enum(Confirmed, NotConfirmed, Pending)
+---
+> {% match outcome %}
+> {% case Confirmed %}
+
+confirmed
+
+> {% case _ %}
+
+fallback
+
+> {% /match %}";
+    let err = crate::Template::from_source(tmpl).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("wildcard '_' in {% case %} is not supported"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn match_without_else_arm_rejected_when_non_exhaustive() {
+    let tmpl = r"---
+params:
+  - outcome = enum(Confirmed, NotConfirmed, Pending)
+---
+> {% match outcome %}
+> {% case Confirmed %}
+
+confirmed
+
+> {% case NotConfirmed %}
+
+not confirmed
+
+> {% /match %}";
+    let err = crate::Template::from_source(tmpl).unwrap_err();
+    assert!(
+        err.to_string().contains("non-exhaustive"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn match_with_else_arm_accepted() {
+    let tmpl = r"---
+params:
+  - outcome = enum(Confirmed, NotConfirmed, Pending)
+---
+> {% match outcome %}
+> {% case Confirmed %}
+
+confirmed
+
+> {% else %}
+
+fallback
+
+> {% /match %}";
+    assert!(crate::Template::from_source(tmpl).is_ok());
 }

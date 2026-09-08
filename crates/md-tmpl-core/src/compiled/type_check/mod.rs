@@ -92,6 +92,28 @@ pub fn validate_field_accesses_full(
     errors
 }
 
+/// Like [`validate_field_accesses_full`], but defers displayability checks
+/// (`{{ struct }}`, `{{ list }}`, `{{ option }}`) to render time.
+///
+/// Used by `Template::from_source` so runtime templates enforce full static
+/// type checking on built-in functions (`kind()`, `has()`, `len()`), field
+/// accesses, and match exhaustiveness/narrowing across all language bindings.
+#[must_use]
+pub fn validate_field_accesses_runtime(
+    segments: &[Segment],
+    declarations: &[VarDecl],
+    type_aliases: &HashMap<String, VarType>,
+    opaque_roots: &HashSet<String>,
+) -> Vec<String> {
+    let mut type_env = TypeEnv::from_declarations_and_types(declarations, type_aliases);
+    type_env.opaque_roots.clone_from(opaque_roots);
+    type_env.check_displayability = false;
+    let mut errors = Vec::new();
+    let mut visited = HashSet::new();
+    walk_segments(segments, &mut type_env, &mut errors, &mut visited);
+    errors
+}
+
 #[cfg(all(test, feature = "std"))]
 #[path = "type_check_tests.rs"]
 mod type_check_tests;

@@ -99,11 +99,10 @@ impl VarType {
     /// `{% match %}` instead.
     #[must_use]
     pub fn is_displayable(&self) -> bool {
-        match self {
-            Self::Str | Self::Int | Self::Float | Self::Bool | Self::Enum(_) => true,
-            Self::Option(inner) => inner.is_displayable(),
-            _ => false,
-        }
+        matches!(
+            self,
+            Self::Str | Self::Int | Self::Float | Self::Bool | Self::Enum(_)
+        )
     }
 
     /// Returns `true` if `value` is compatible with this declared type.

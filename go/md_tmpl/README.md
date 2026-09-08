@@ -496,17 +496,17 @@ vs Go's `text/template`, median of 3 runs
 
 | Scenario   |          md-tmpl | Go `text/template` | speedup |
 | ---------- | ---------------: | -----------------: | ------: |
-| **small**  |           609 ns |             576 ns |   ~1.0× |
-| **medium** |  **1,734 ns** 🏆 |           5,902 ns |    3.4× |
-| **large**  | **25,852 ns** 🏆 |         135,161 ns |    5.2× |
+| **small**  |    **514 ns** 🏆 |             547 ns |   1.06× |
+| **medium** |  **1,531 ns** 🏆 |           6,174 ns |    4.0× |
+| **large**  | **27,160 ns** 🏆 |         143,053 ns |    5.3× |
 
 **Round-trip** (parse + render):
 
 | Scenario   |          md-tmpl | Go `text/template` | speedup |
 | ---------- | ---------------: | -----------------: | ------: |
-| **small**  |         6,231 ns |           5,551 ns |   ~1.0× |
-| **medium** |        21,534 ns |          20,276 ns |   ~1.0× |
-| **large**  | **67,844 ns** 🏆 |         165,417 ns |    2.4× |
+| **small**  |         6,774 ns |           5,540 ns |   ~1.0× |
+| **medium** |        22,309 ns |          20,103 ns |   ~1.0× |
+| **large**  | **66,692 ns** 🏆 |         167,501 ns |    2.5× |
 
 **Filters:**
 

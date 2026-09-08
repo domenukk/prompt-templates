@@ -96,6 +96,17 @@ function extractHasArg(condition: string): string | undefined {
   return undefined;
 }
 
+function extractNegatedHasArg(condition: string): string | undefined {
+  const trimmed = condition.trim();
+  if (trimmed.startsWith("!has(") && trimmed.endsWith(")")) {
+    const inner = trimmed.slice(5, -1).trim();
+    if (inner.length > 0 && !inner.includes(" ")) {
+      return inner;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Check if a case arm label matches the active variant.
  *
@@ -267,7 +278,21 @@ export function renderNodes(
           }
         }
         if (!matched && node.elseBody) {
-          parts.push(renderNodes(node.elseBody, scope, options));
+          const negHasArg =
+            node.branches.length === 1 && node.branches[0]
+              ? extractNegatedHasArg(node.branches[0].condition)
+              : undefined;
+          if (negHasArg && scope.isOptionParam(negHasArg)) {
+            scope.pushLayer();
+            try {
+              scope.narrowOption(negHasArg);
+              parts.push(renderNodes(node.elseBody, scope, options));
+            } finally {
+              scope.popLayer();
+            }
+          } else {
+            parts.push(renderNodes(node.elseBody, scope, options));
+          }
         }
         break;
       }
@@ -305,7 +330,12 @@ export function renderNodes(
           if (armMatches) {
             const layer = scope.pushLayer();
             try {
-              if (variant === OPTION_SOME && val.type !== TYPE_NONE) {
+              if (
+                arm.variants.length === 1 &&
+                arm.variants[0] === OPTION_SOME &&
+                variant === OPTION_SOME &&
+                val.type !== TYPE_NONE
+              ) {
                 layer.set(node.expr, val);
                 scope.narrowOption(node.expr);
               }

@@ -78,6 +78,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 ITERATIONS = 10_000
+COMPILE_ITERATIONS = 1_000
 TIMEIT_REPEAT = 5  # best-of-N runs for stability
 REFERENCE_ENGINE = "md-tmpl"
 
@@ -857,7 +858,7 @@ def bench_compile(
             scenario.name,
             engine.name,
             lambda eng=engine, src=source: eng.compile(src),
-            ITERATIONS,
+            COMPILE_ITERATIONS,
         )
     return results
 
@@ -881,7 +882,7 @@ def bench_compile_and_render(
             scenario.name,
             engine.name,
             run,
-            ITERATIONS,
+            COMPILE_ITERATIONS,
         )
     return results
 

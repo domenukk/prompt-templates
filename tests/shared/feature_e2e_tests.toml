@@ -4426,3 +4426,88 @@ draft = false
 # tests live in:
 #   Rust — template/tests.rs (crlf_from_source_produces_lf_output, etc.)
 #   TS   — crlf.test.ts
+
+# ============================================================================
+# F15: Built-in Function & Option Match Strict Type Checking (Cross-Language)
+# ============================================================================
+
+[[tests]]
+name = "kind_on_plain_str_rejected"
+description = "kind() on a plain str parameter must be rejected across all backends"
+template = '''
+---
+params:
+  - msg = str
+---
+{{ kind(msg) }}'''
+expected_error = "kind() requires an enum"
+[tests.params]
+msg = "hello"
+
+[[tests]]
+name = "has_in_expr_on_plain_str_rejected"
+description = "has() in expression tag on a plain str parameter must be rejected across all backends"
+template = '''
+---
+params:
+  - label = str
+---
+{{ has(label) }}'''
+expected_error = "has() requires an option"
+[tests.params]
+label = "hello"
+
+[[tests]]
+name = "len_on_int_rejected"
+description = "len() on an int parameter must be rejected across all backends"
+template = '''
+---
+params:
+  - count = int
+---
+{{ len(count) }}'''
+expected_error = "len() requires a list or str"
+[tests.params]
+count = 42
+
+[[tests]]
+name = "option_match_non_exhaustive_rejected"
+description = "Multi-arm match on option missing None without else must be rejected"
+template = '''
+---
+params:
+  - opt = option(str)
+---
+
+> {% match opt %}
+> {% case Some && opt == "special" %}
+
+special: {{ opt }}
+
+> {% case Some %}
+
+has: {{ opt }}
+
+> {% /match %}'''
+expected_error = "non-exhaustive"
+[tests.params]
+opt = "hello"
+
+[[tests]]
+name = "option_match_some_or_none_narrowing_rejected"
+description = "case Some | None must not unsoundly narrow option to inner struct"
+template = '''
+---
+params:
+  - opt = option(struct(title = str))
+---
+
+> {% match opt %}
+> {% case Some | None %}
+
+{{ opt.title }}
+
+> {% /match %}'''
+expected_error = "cannot access field"
+[tests.params.opt]
+title = "hello"
